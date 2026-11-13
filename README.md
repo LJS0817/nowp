@@ -46,12 +46,19 @@
 
 ## 🔥 Challenge & Solution (Troubleshooting)
 
-### 🚨 Android Notification 데이터 파싱 및 백그라운드 스트리밍
+### 1. 네이티브 알림 필터링 & 앨범 아트 바이트 전송 최적화
 - **Problem:** 
-  AI 도구나 기존 패키지의 도움 없이 오롯이 혼자 Native 통신을 구현하다 보니, 안드로이드 시스템의 무수히 많은 Notification(알림) 데이터 더미 속에서 **음악 재생에 필요한 핵심 메타데이터(곡명, 아티스트, 앨범 아트)만 정확하게 식별하고 추출**해 내는 과정이 매우 까다로웠습니다. 
-
+  Android `NotificationListenerService`에서 유튜브 뮤직의 재생 알림이 갱신될 때마다 대용량 앨범 아트 비트맵 바이트 배열이 `EventChannel` 스트림을 통해 Flutter로 지속 전송되었습니다. 이로 인해 동일 곡 내 재생 진행 바 업데이트만으로도 불필요한 직렬화 오버헤드와 GC(가비지 컬렉터) 스파이크가 발생했습니다.
 - **Solution:** 
-  Android 공식 문서와 개발 커뮤니티(StackOverflow 등)를 끈질기게 탐구하며 `NotificationListenerService`의 메커니즘을 파악했습니다. Media Session에서 발생한 알림인지 판별하는 로직을 Java 단에 구현하고, Bundle에서 필요한 데이터만 선별적으로 추출하여 **`EventChannel` 스트림을 통해 Flutter UI로 실시간 전송(Streaming)**하는 매우 안정적인 브릿지 로직을 완성했습니다.
+  Java 네이티브 단에서 `NotificationObject` 모델을 구축하고, 이전 프레임과 현재 프레임의 앨범 아트 바이트를 `Arrays.equals()`로 비교하여 이미지가 실제로 변경된 경우에만 플러터로 바이트 스트림을 전송하도록 필터링했습니다. 또한 추출이 끝난 비트맵은 `bitmap.recycle()`을 즉시 호출하여 네이티브 메모리 누수를 원천 차단했습니다.
+
+---
+
+### 2. 1초 주기 시계 갱신과 무거운 애니메이션 UI 리빌드 분리
+- **Problem:** 
+  스탠드 탁상시계 모드에서 1초마다 시계 텍스트가 갱신될 때, 미디어 컨트롤러의 `flutter_animate` 앨범 아트 회전 애니메이션 및 SVG 테마 위젯까지 전체 트리가 함께 재빌드되면서 프레임 드랍이 발생했습니다.
+- **Solution:** 
+  상태 관리 범위를 관심사별로 분리했습니다. 1초 주기 타이머는 `TimerProvider`로 격리하고, 미디어 메타데이터는 `AudioProvider`, 앱 전역 테마는 `ThemeProvider`로 3분할했습니다. 위젯 트리 최하단에서 `Consumer`를 사용하여 각 프로바이더의 변경 사항만 국소적으로 구독하도록 리팩터링하여, 1초마다 화면 전체가 리빌드되는 낭비를 제거하고 부드러운 60FPS를 유지했습니다.
 
 ---
 
